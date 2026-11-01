@@ -35,27 +35,55 @@ function guardarEnLocalStorage(clave, valor){
     localStorage.setItem(clave, JSON.stringify(valor));
 }
 
+function diagnosticarOperacionFirestore(operacion, consulta){
+    return consulta.catch(error => {
+        console.error(`Error en Firestore (${operacion}):`, error);
+
+        const detalle = error?.code === "permission-denied"
+            ? `Firestore denegó ${operacion}. Revisa las reglas de esa colección.`
+            : `Falló ${operacion}: ${error.message || "error desconocido de Firestore"}`;
+        const errorConContexto = new Error(detalle);
+        errorConContexto.code = error?.code;
+        throw errorConContexto;
+    });
+}
+
 async function cargarDatosFirebase(perfil){
     const esAdmin = perfil.rol === "admin";
-    const consultaProductos = esAdmin
-        ? firestoreDb.collection("products").get()
-        : firestoreDb.collection("products")
-            .where("categoria", "==", perfil.categoria)
-            .get();
-    const consultaUsuarios = esAdmin
-        ? firestoreDb.collection("users").get()
-        : firestoreDb.collection("users").doc(perfil.uid).get();
-    const consultaSolicitudes = esAdmin
-        ? firestoreDb.collection("requests").get()
-        : firestoreDb.collection("requests")
-            .where("uid", "==", perfil.uid)
-            .get();
+    const consultaProductos = diagnosticarOperacionFirestore(
+        "leer la colección 'products'",
+        esAdmin
+            ? firestoreDb.collection("products").get()
+            : firestoreDb.collection("products")
+                .where("categoria", "==", perfil.categoria)
+                .get()
+    );
+    const consultaUsuarios = diagnosticarOperacionFirestore(
+        esAdmin
+            ? "leer la colección 'users'"
+            : "leer el perfil en 'users'",
+        esAdmin
+            ? firestoreDb.collection("users").get()
+            : firestoreDb.collection("users").doc(perfil.uid).get()
+    );
+    const consultaSolicitudes = diagnosticarOperacionFirestore(
+        "leer la colección 'requests'",
+        esAdmin
+            ? firestoreDb.collection("requests").get()
+            : firestoreDb.collection("requests")
+                .where("uid", "==", perfil.uid)
+                .get()
+    );
+    const consultaConfiguracion = diagnosticarOperacionFirestore(
+        "leer el documento 'settings/catalog'",
+        firestoreDb.collection("settings").doc("catalog").get()
+    );
     const [productosSnapshot, usuariosSnapshot, solicitudesSnapshot, settingsSnapshot] =
         await Promise.all([
             consultaProductos,
             consultaUsuarios,
             consultaSolicitudes,
-            firestoreDb.collection("settings").doc("catalog").get()
+            consultaConfiguracion
         ]);
 
     if(esAdmin && productosSnapshot.empty){
@@ -70,7 +98,10 @@ async function cargarDatosFirebase(perfil){
         });
 
         if(catalogoLocal.length > 0){
-            await lote.commit();
+            await diagnosticarOperacionFirestore(
+                "guardar el catálogo inicial en 'products'",
+                lote.commit()
+            );
         }
     }
 
@@ -101,10 +132,13 @@ async function cargarDatosFirebase(perfil){
         categorias = settings.categorias || categorias;
         unidades = settings.unidades || unidades;
     }else if(esAdmin){
-        await firestoreDb.collection("settings").doc("catalog").set({
-            categorias,
-            unidades
-        });
+        await diagnosticarOperacionFirestore(
+            "crear el documento 'settings/catalog'",
+            firestoreDb.collection("settings").doc("catalog").set({
+                categorias,
+                unidades
+            })
+        );
     }
 
     guardarEnLocalStorage("productos", productos);
@@ -206,7 +240,10 @@ function guardarSolicitudes(solicitudActualizada = null){
 async function iniciarSesionFirebase(email, password){
     const credenciales = await firebaseAuthService.signInWithEmailAndPassword(email, password);
     try{
-        const documento = await firestoreDb.collection("users").doc(credenciales.user.uid).get();
+        const documento = await diagnosticarOperacionFirestore(
+            "leer el perfil en 'users'",
+            firestoreDb.collection("users").doc(credenciales.user.uid).get()
+        );
 
         if(!documento.exists){
             throw new Error("No existe el perfil de usuario en Firestore.");
