@@ -50,11 +50,12 @@ function guardarUsuarios(){
 let usuarioActual = null;
 
 const correosPorUsuario = {
-    "cajas":"cemascaf+cajas@gmail.com",
-    "servicio":"cemascaf+servicio@gmail.com",
-    "cocina":"cemascaf+cocina@gmail.com",
-    "cocina 2":"cemascaf+chef@gmail.com",
-    "limpieza":"cemascaf+limpieza@gmail.com"
+    "cajas": "cemascaf+cajas@gmail.com",
+    "servicio": "cemascaf+servicio@gmail.com",
+    "cocina": "cemascaf+cocina@gmail.com",
+    "cocina2": "cemascaf+chef@gmail.com",
+    "cocina 2": "cemascaf+chef@gmail.com",
+    "limpieza": "cemascaf+limpieza@gmail.com"
 };
 
 function obtenerCorreoDeAcceso(identificador){
