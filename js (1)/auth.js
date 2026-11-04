@@ -49,6 +49,29 @@ function guardarUsuarios(){
 
 let usuarioActual = null;
 
+const correosPorUsuario = {
+    cajas:"cemascaf+cajas@gmail.com",
+    claudia:"cemascaf+servicio@gmail.com",
+    max:"cemascaf+cocina@gmail.com",
+    "dona jose":"cemascaf+chef@gmail.com",
+    limpieza:"cemascaf+limpieza@gmail.com"
+};
+
+function obtenerCorreoDeAcceso(identificador){
+    const usuarioNormalizado = identificador
+        .trim()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("es");
+    const correoAsignado = Object.prototype.hasOwnProperty.call(
+        correosPorUsuario,
+        usuarioNormalizado
+    ) ? correosPorUsuario[usuarioNormalizado] : null;
+
+    return correoAsignado ||
+        (identificador.includes("@") ? identificador.trim() : null);
+}
+
 async function login(){
     const identificador = document.getElementById("usuario").value.trim();
     const password = document.getElementById("password").value;
@@ -64,8 +87,15 @@ async function login(){
             return;
         }
 
+        const correo = obtenerCorreoDeAcceso(identificador);
+
+        if(!correo){
+            alert("Usuario no reconocido. Revisa el nombre e inténtalo de nuevo.");
+            return;
+        }
+
         try{
-            usuarioActual = await iniciarSesionFirebase(identificador, password);
+            usuarioActual = await iniciarSesionFirebase(correo, password);
             mostrarSistema();
             escucharSolicitudesFirebase();
         }catch(error){
