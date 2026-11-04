@@ -9,7 +9,7 @@ function mostrarLogin() {
         <input
             type="text"
             id="usuario"
-            placeholder="${firebaseEstaConfigurado() ? "Correo electrónico" : "Usuario (modo local)"}"
+            placeholder="${firebaseEstaConfigurado() ? "Usuario o correo electrónico" : "Usuario (modo local)"}"
             autocomplete="username">
 
         <input
@@ -26,7 +26,7 @@ function mostrarLogin() {
 
         <p class="muted" role="status">
             ${firebaseEstaConfigurado()
-                ? "Inicio de sesión con Firebase Authentication."
+                ? "Ingresa tu usuario y contraseña. El administrador puede usar su correo."
                 : "Modo local: las cuentas y solicitudes no se sincronizan entre dispositivos."}
         </p>
 
