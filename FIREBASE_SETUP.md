@@ -50,9 +50,23 @@ Para cada usuario de Cocina, Limpieza, Servicio o Caja:
 
 1. Crea la cuenta en Authentication.
 2. Crea `users/{UID}` en Firestore con `usuario`, `email`, `rol: "usuario"`, la `categoria` correspondiente, `activo: true`, `fechaCreacion` y `solicitudes: 0`.
-3. El usuario inicia sesión con su correo y contraseña.
+3. En Cemaz, los usuarios normales pueden iniciar sesión con el nombre corto configurado y su contraseña. El administrador puede seguir usando su correo y contraseña.
+
+Los nombres cortos se relacionan con correos de Firebase en `js/auth.js`:
+
+| Usuario para iniciar sesión | Cuenta de Firebase Authentication |
+|---|---|
+| `cajas` | `cemascaf+cajas@gmail.com` |
+| `servicio` | `cemascaf+servicio@gmail.com` |
+| `cocina` | `cemascaf+cocina@gmail.com` |
+| `cocina2` o `cocina 2` | `cemascaf+chef@gmail.com` |
+| `limpieza` | `cemascaf+limpieza@gmail.com` |
+
+El nombre es insensible a mayúsculas y acentos. Como el frontend es público, estos alias también son visibles en el código; no son contraseñas ni deben usarse como secreto. No guardes contraseñas en el código ni en Firestore.
 
 Las reglas hacen que los usuarios solo consulten productos de su categoría y sus solicitudes. Admin puede gestionar usuarios, productos y solicitudes. No publiques en GitHub con reglas de prueba o abiertas.
+
+En el catálogo, los usuarios pueden escribir la cantidad solicitada y adjuntar una observación general (por ejemplo, un producto faltante o nuevo), incluso sin agregar productos. Al enviar, la solicitud queda guardada sin cerrar la aplicación; si falla el guardado, se conservan los datos para reintentar. El administrador puede separar solicitudes pendientes y completas y completar cada solicitud explícitamente; completar una solicitud no cambia los estados individuales de sus productos. En Configuración, el administrador puede agregar unidades y asignarlas a productos al crearlos o editarlos. El resumen semanal agrupa cantidades por producto y unidad, según estado, de lunes a domingo.
 
 ## 5. Datos que se inicializan
 
