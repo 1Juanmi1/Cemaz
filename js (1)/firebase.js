@@ -21,14 +21,18 @@ if(firebaseEstaConfigurado() && typeof firebase !== "undefined"){
     firebaseDisponible = true;
 }
 
-function reportarErrorFirebase(operacion, error){
+function reportarErrorFirebase(operacion, error, mostrarAlerta = true){
     console.error(`Error de Firebase (${operacion}):`, error);
 
     const mensaje = error?.code === "permission-denied"
-        ? "Firebase rechazó la operación. Revisa las reglas de Firestore y los permisos de tu cuenta."
+        ? `Firestore rechazó ${operacion}. Verifica que publicaste las reglas actuales en el proyecto correcto y que el perfil del usuario tenga activo: true, UID, nombre y categoría correctos.`
         : "No se pudo completar la operación en Firebase. Revisa tu conexión e inténtalo de nuevo.";
 
-    alert(mensaje);
+    if(mostrarAlerta){
+        alert(mensaje);
+    }
+
+    return mensaje;
 }
 
 function guardarEnLocalStorage(clave, valor){
@@ -210,7 +214,7 @@ function guardarConfiguracionFirebase(){
     );
 }
 
-function guardarSolicitudes(solicitudActualizada = null){
+function guardarSolicitudes(solicitudActualizada = null, notificarError = true){
     guardarEnLocalStorage("solicitudes", solicitudes);
 
     if(!firestoreDb || !usuarioActual){
@@ -232,7 +236,14 @@ function guardarSolicitudes(solicitudActualizada = null){
 
     return firestoreDb.collection("requests").doc(id).set(datos, {merge:true})
         .then(() => true).catch(error => {
-        reportarErrorFirebase("guardar solicitudes", error);
+        const mensaje = reportarErrorFirebase(
+            "guardar solicitudes",
+            error,
+            notificarError
+        );
+        if(!notificarError){
+            mensajeSolicitud = mensaje;
+        }
         return false;
     });
 }
@@ -255,8 +266,15 @@ async function iniciarSesionFirebase(email, password){
             email:credenciales.user.email
         };
 
-        if(perfil.activo === false){
-            throw new Error("Esta cuenta está desactivada. Contacta al administrador.");
+        if(perfil.activo !== true){
+            throw new Error("El perfil de Firestore debe tener activo: true. Contacta al administrador.");
+        }
+
+        if(perfil.rol !== "admin" &&
+            (!String(perfil.usuario || "").trim() ||
+             !String(perfil.categoria || "").trim())
+        ){
+            throw new Error("El perfil de Firestore debe tener usuario y categoría configurados. Contacta al administrador.");
         }
 
         await cargarDatosFirebase(perfil);
