@@ -62,6 +62,14 @@ function mostrarSistema() {
                 📋 Solicitudes
             </button>
 
+            <button onclick="mostrarResumenSemanal()">
+                📅 Resumen semanal
+            </button>
+
+            <button onclick="mostrarGraficaProductosMasPedidos()">
+                📈 Productos más pedidos
+            </button>
+
             <button onclick="mostrarPanelProductos()">
                 📦 Productos
             </button>
@@ -168,6 +176,8 @@ function mostrarSistema() {
 
     }else{
 
+        gruposCatalogoAbiertos.clear();
+        catalogoUsuarioInicializado = false;
         mostrarProductos();
 
         actualizarCarrito();
@@ -256,11 +266,29 @@ function mostrarDashboard(){
 function mostrarProductos() {
     renderCatalogoUsuario();
 }
+
+function actualizarCantidadesCatalogo(){
+    document.querySelectorAll(".cantidad input[data-product-id]").forEach(input => {
+        input.value = String(obtenerCantidad(input.dataset.productId));
+    });
+}
+
 function renderProductosUsuario(){
     renderCatalogoUsuario();
 }
 function filtrarProductosUsuario(){
     renderCatalogoUsuario(true);
+}
+
+const gruposCatalogoAbiertos = new Set();
+let catalogoUsuarioInicializado = false;
+
+function actualizarEstadoGrupoCatalogo(grupo){
+    if(grupo.open){
+        gruposCatalogoAbiertos.add(grupo.dataset.catalogGroup);
+    }else{
+        gruposCatalogoAbiertos.delete(grupo.dataset.catalogGroup);
+    }
 }
 
 function escaparHTML(valor){
@@ -281,6 +309,7 @@ function renderCatalogoUsuario(restaurarFoco = false){
         return;
     }
 
+    const posicionScroll = window.scrollY;
     const texto = (
         document.getElementById("buscarUsuario")?.value || ""
     ).trim().toLocaleLowerCase();
@@ -310,13 +339,22 @@ function renderCatalogoUsuario(restaurarFoco = false){
         a.localeCompare(b, "es")
     );
 
+    if(!catalogoUsuarioInicializado){
+        if(nombresGrupos.length > 0){
+            gruposCatalogoAbiertos.add(nombresGrupos[0]);
+        }
+        catalogoUsuarioInicializado = true;
+    }
+
     if(nombresGrupos.length === 0){
         html += `<p class="empty-state">No hay productos disponibles para tu categoría.</p>`;
     }
 
-    nombresGrupos.forEach((subcategoria, index) => {
+    nombresGrupos.forEach(subcategoria => {
+        const abierto = gruposCatalogoAbiertos.has(subcategoria);
         html += `
-            <details class="catalog-group" ${index === 0 ? "open" : ""}>
+            <details class="catalog-group" data-catalog-group="${escaparHTML(subcategoria)}"
+                ontoggle="actualizarEstadoGrupoCatalogo(this)" ${abierto ? "open" : ""}>
                 <summary>${escaparHTML(subcategoria)} <span>${grupos[subcategoria].length}</span></summary>
                 <div class="cards">
         `;
@@ -329,7 +367,11 @@ function renderCatalogoUsuario(restaurarFoco = false){
                     <div class="cantidad">
                         <button aria-label="Quitar ${escaparHTML(producto.nombre)}"
                             onclick="quitarProducto(${producto.id})">−</button>
-                        <span>${obtenerCantidad(producto.id)}</span>
+                        <input type="number" min="0" step="1"
+                            aria-label="Cantidad de ${escaparHTML(producto.nombre)}"
+                            data-product-id="${escaparHTML(producto.id)}"
+                            value="${obtenerCantidad(producto.id)}"
+                            onchange="establecerCantidadProducto(${producto.id}, this.value)">
                         <button aria-label="Agregar ${escaparHTML(producto.nombre)}"
                             onclick="agregarProducto(${producto.id})">+</button>
                     </div>
@@ -341,6 +383,7 @@ function renderCatalogoUsuario(restaurarFoco = false){
     });
 
     contenedor.innerHTML = html;
+    window.scrollTo(0, posicionScroll);
 
     if(restaurarFoco){
         const campoBusqueda = document.getElementById("buscarUsuario");
