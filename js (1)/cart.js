@@ -1,4 +1,7 @@
 let carrito = [];
+let observacionesSolicitud = "";
+let solicitudEnviando = false;
+let mensajeSolicitud = "";
 
 function agregarProducto(id){
 
@@ -14,6 +17,8 @@ function agregarProducto(id){
     ){
         return;
     }
+
+    mensajeSolicitud = "";
 
     let item =
     carrito.find(
@@ -49,6 +54,8 @@ function quitarProducto(id){
 
     if(!item) return;
 
+    mensajeSolicitud = "";
+
     item.cantidad--;
 
     if(item.cantidad <= 0){
@@ -78,6 +85,45 @@ function obtenerCantidad(id){
     return item ? item.cantidad : 0;
 }
 
+function establecerCantidadProducto(id, valor){
+    const cantidad = Number(valor);
+
+    if(!Number.isInteger(cantidad) || cantidad < 0){
+        alert("Ingresa una cantidad entera igual o mayor que cero.");
+        if(typeof renderProductosUsuario === "function"){
+            renderProductosUsuario();
+        }
+        return;
+    }
+
+    const item = carrito.find(producto => producto.id === id);
+    mensajeSolicitud = "";
+
+    if(cantidad === 0){
+        carrito = carrito.filter(producto => producto.id !== id);
+    }else if(item){
+        item.cantidad = cantidad;
+    }else{
+        const producto = productos.find(producto => producto.id === id);
+
+        if(!producto || !usuarioActual || producto.categoria !== usuarioActual.categoria){
+            return;
+        }
+
+        carrito.push({
+            id:producto.id,
+            nombre:producto.nombre,
+            unidad:producto.unidad,
+            cantidad
+        });
+    }
+
+    actualizarCarrito();
+    if(typeof renderProductosUsuario === "function"){
+        renderProductosUsuario();
+    }
+}
+
 function actualizarCarrito(){
 
     let html = "";
@@ -90,15 +136,20 @@ function actualizarCarrito(){
 
         html += `
         <div class="cart-item">
-            <span>${escaparHTML(item.nombre)}</span>
-            <strong>x${item.cantidad}</strong>
+            <span>${escaparHTML(item.nombre)}${item.unidad ? ` (${escaparHTML(item.unidad)})` : ""}</span>
+            <strong>${item.cantidad}</strong>
         </div>
         `;
     });
 
     html += `
-    <button onclick="enviarSolicitud()" ${carrito.length === 0 ? "disabled" : ""}>
-        Enviar Solicitud
+    <label for="observacionesSolicitud">Observaciones o producto faltante/nuevo</label>
+    <textarea id="observacionesSolicitud" rows="3"
+        placeholder="Escribe aquí si falta un producto o necesitas solicitar uno nuevo..."
+        oninput="observacionesSolicitud=this.value; document.getElementById('enviarSolicitudBtn').disabled=solicitudEnviando || (carrito.length===0 && !this.value.trim())">${escaparHTML(observacionesSolicitud)}</textarea>
+    <p class="muted" role="status" aria-live="polite">${escaparHTML(mensajeSolicitud)}</p>
+    <button id="enviarSolicitudBtn" onclick="enviarSolicitud()" ${solicitudEnviando || (carrito.length === 0 && !observacionesSolicitud.trim()) ? "disabled" : ""}>
+        ${solicitudEnviando ? "Enviando..." : "Enviar solicitud"}
     </button>
     `;
 
@@ -111,9 +162,16 @@ function actualizarCarrito(){
 
 async function enviarSolicitud(){
 
-    if(carrito.length === 0){
+    if(solicitudEnviando){
+        return;
+    }
 
-        alert("No hay productos en la solicitud");
+    const observaciones = observacionesSolicitud.trim();
+
+    if(carrito.length === 0 && !observaciones){
+
+        mensajeSolicitud = "Agrega productos o escribe una observación antes de enviar.";
+        actualizarCarrito();
         return;
     }
 
@@ -133,31 +191,47 @@ async function enviarSolicitud(){
         creadoEn:Date.now(),
 
         productos:
-        [...carrito],
+        carrito.map(producto => ({...producto})),
+
+        observaciones,
 
         estado:
-        "Pendiente"
+        "Pendiente",
+
+        completada:false
 
     };
 
     solicitudes.push(nuevaSolicitud);
-    const guardado = await guardarSolicitudes(nuevaSolicitud);
+    solicitudEnviando = true;
+    mensajeSolicitud = "Enviando solicitud...";
+    actualizarCarrito();
+
+    let guardado = false;
+    try{
+        guardado = await guardarSolicitudes(nuevaSolicitud);
+    }catch(error){
+        console.error("No se pudo enviar la solicitud:", error);
+    }finally{
+        solicitudEnviando = false;
+    }
 
     if(!guardado){
-        solicitudes.pop();
+        solicitudes = solicitudes.filter(solicitud => solicitud.id !== nuevaSolicitud.id);
         guardarEnLocalStorage("solicitudes", solicitudes);
+        mensajeSolicitud = "No se pudo enviar la solicitud. Tus productos y observaciones siguen aquí; inténtalo de nuevo.";
+        actualizarCarrito();
         return;
     }
-    alert(
-        "Solicitud enviada correctamente"
-    );
 
     carrito = [];
+    observacionesSolicitud = "";
+    mensajeSolicitud = "Solicitud enviada correctamente. Puedes seguir usando la aplicación.";
 
-   actualizarCarrito();
+    actualizarCarrito();
 
-if(typeof renderProductosUsuario === "function"){
-    renderProductosUsuario();
-}
+    if(typeof renderProductosUsuario === "function"){
+        renderProductosUsuario();
+    }
 
 }
