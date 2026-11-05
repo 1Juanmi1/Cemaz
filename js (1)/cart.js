@@ -7,7 +7,7 @@ function agregarProducto(id){
 
     const producto =
     productos.find(
-        p => p.id === id
+        p => String(p.id) === String(id)
     );
 
     if(
@@ -22,7 +22,7 @@ function agregarProducto(id){
 
     let item =
     carrito.find(
-        p => p.id === id
+        p => String(p.id) === String(id)
     );
 
     if(item){
@@ -40,7 +40,7 @@ function agregarProducto(id){
 
     }
 
-    mostrarProductos();
+    actualizarCantidadesCatalogo();
     actualizarCarrito();
 
 }
@@ -49,7 +49,7 @@ function quitarProducto(id){
 
     let item =
     carrito.find(
-        p => p.id === id
+        p => String(p.id) === String(id)
     );
 
     if(!item) return;
@@ -62,16 +62,14 @@ function quitarProducto(id){
 
         carrito =
         carrito.filter(
-            p => p.id !== id
+            p => String(p.id) !== String(id)
         );
 
     }
 
 actualizarCarrito();
 
-if(typeof renderProductosUsuario === "function"){
-    renderProductosUsuario();
-}
+actualizarCantidadesCatalogo();
 
 }
 
@@ -79,7 +77,7 @@ function obtenerCantidad(id){
 
     let item =
     carrito.find(
-        p => p.id === id
+        p => String(p.id) === String(id)
     );
 
     return item ? item.cantidad : 0;
@@ -90,21 +88,19 @@ function establecerCantidadProducto(id, valor){
 
     if(!Number.isInteger(cantidad) || cantidad < 0){
         alert("Ingresa una cantidad entera igual o mayor que cero.");
-        if(typeof renderProductosUsuario === "function"){
-            renderProductosUsuario();
-        }
+        actualizarCantidadesCatalogo();
         return;
     }
 
-    const item = carrito.find(producto => producto.id === id);
+    const item = carrito.find(producto => String(producto.id) === String(id));
     mensajeSolicitud = "";
 
     if(cantidad === 0){
-        carrito = carrito.filter(producto => producto.id !== id);
+        carrito = carrito.filter(producto => String(producto.id) !== String(id));
     }else if(item){
         item.cantidad = cantidad;
     }else{
-        const producto = productos.find(producto => producto.id === id);
+        const producto = productos.find(producto => String(producto.id) === String(id));
 
         if(!producto || !usuarioActual || producto.categoria !== usuarioActual.categoria){
             return;
@@ -119,9 +115,7 @@ function establecerCantidadProducto(id, valor){
     }
 
     actualizarCarrito();
-    if(typeof renderProductosUsuario === "function"){
-        renderProductosUsuario();
-    }
+    actualizarCantidadesCatalogo();
 }
 
 function actualizarCarrito(){
@@ -147,7 +141,8 @@ function actualizarCarrito(){
     <textarea id="observacionesSolicitud" rows="3"
         placeholder="Escribe aquí si falta un producto o necesitas solicitar uno nuevo..."
         oninput="observacionesSolicitud=this.value; document.getElementById('enviarSolicitudBtn').disabled=solicitudEnviando || (carrito.length===0 && !this.value.trim())">${escaparHTML(observacionesSolicitud)}</textarea>
-    <p class="muted" role="status" aria-live="polite">${escaparHTML(mensajeSolicitud)}</p>
+    <p class="solicitud-status" data-error="${mensajeSolicitud.includes("rechazó") ? "true" : "false"}"
+        role="status" aria-live="polite">${escaparHTML(mensajeSolicitud)}</p>
     <button id="enviarSolicitudBtn" onclick="enviarSolicitud()" ${solicitudEnviando || (carrito.length === 0 && !observacionesSolicitud.trim()) ? "disabled" : ""}>
         ${solicitudEnviando ? "Enviando..." : "Enviar solicitud"}
     </button>
@@ -209,7 +204,7 @@ async function enviarSolicitud(){
 
     let guardado = false;
     try{
-        guardado = await guardarSolicitudes(nuevaSolicitud);
+        guardado = await guardarSolicitudes(nuevaSolicitud, false);
     }catch(error){
         console.error("No se pudo enviar la solicitud:", error);
     }finally{
@@ -219,7 +214,9 @@ async function enviarSolicitud(){
     if(!guardado){
         solicitudes = solicitudes.filter(solicitud => solicitud.id !== nuevaSolicitud.id);
         guardarEnLocalStorage("solicitudes", solicitudes);
-        mensajeSolicitud = "No se pudo enviar la solicitud. Tus productos y observaciones siguen aquí; inténtalo de nuevo.";
+        if(mensajeSolicitud === "Enviando solicitud..."){
+            mensajeSolicitud = "No se pudo enviar la solicitud. Tus productos y observaciones siguen aquí; inténtalo de nuevo.";
+        }
         actualizarCarrito();
         return;
     }
@@ -230,8 +227,6 @@ async function enviarSolicitud(){
 
     actualizarCarrito();
 
-    if(typeof renderProductosUsuario === "function"){
-        renderProductosUsuario();
-    }
+    actualizarCantidadesCatalogo();
 
 }
