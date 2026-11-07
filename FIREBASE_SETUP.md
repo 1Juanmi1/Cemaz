@@ -64,9 +64,13 @@ Los nombres cortos se relacionan con correos de Firebase en `js/auth.js`:
 
 El nombre es insensible a mayúsculas y acentos. Como el frontend es público, estos alias también son visibles en el código; no son contraseñas ni deben usarse como secreto. No guardes contraseñas en el código ni en Firestore.
 
-Las reglas hacen que los usuarios solo consulten productos de su categoría y sus solicitudes. Admin puede gestionar usuarios, productos y solicitudes. No publiques en GitHub con reglas de prueba o abiertas.
+Las reglas hacen que los usuarios solo consulten productos de su categoría y sus solicitudes. Admin puede gestionar usuarios, productos y solicitudes. Solo perfiles activos (`activo: true`) con `rol: "admin"` pueden crear/editar/eliminar documentos de `products` y guardar `settings/catalog` (unidades y categorías). Después de modificar `firestore.rules`, publícalo también en **Firestore Database → Rules** en Firebase Console; subirlo a GitHub por sí solo no actualiza los permisos del proyecto. No publiques reglas de prueba o abiertas.
 
 En el catálogo, los usuarios pueden escribir la cantidad solicitada y adjuntar una observación general (por ejemplo, un producto faltante o nuevo), incluso sin agregar productos. Al enviar, la solicitud queda guardada sin cerrar la aplicación; si falla el guardado, se conservan los datos para reintentar. El administrador puede separar solicitudes pendientes y completas y completar cada solicitud explícitamente; completar una solicitud no cambia los estados individuales de sus productos. En Configuración, el administrador puede agregar unidades y asignarlas a productos al crearlos o editarlos. El resumen semanal agrupa cantidades por producto y unidad, según estado, de lunes a domingo.
+
+El administrador también puede consultar una gráfica con los 10 productos más solicitados por cantidad en todo el historial, sin importar el estado de cada producto. Cambiar cantidades en el catálogo actualiza el carrito sin volver a dibujar la lista de productos.
+
+Si Firestore rechaza una solicitud, publica `firestore.rules` desde la consola del mismo proyecto indicado en `js/firebase-config.js`. Revisa además que `users/{UID}` use el UID de Authentication y tenga `activo: true`, `usuario` y `categoria` iguales a los del perfil con el que se inició sesión. La aplicación conservará el borrador y mostrará el error en el carrito.
 
 ## 5. Datos que se inicializan
 

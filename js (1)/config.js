@@ -61,7 +61,7 @@ function guardarCategorias(){
         "categorias",
         JSON.stringify(categorias)
     );
-    guardarConfiguracionFirebase();
+    return guardarConfiguracionFirebase();
 
 }
 
@@ -71,6 +71,6 @@ function guardarUnidades(){
         "unidades",
         JSON.stringify(unidades)
     );
-    guardarConfiguracionFirebase();
+    return guardarConfiguracionFirebase();
 
 }

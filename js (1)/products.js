@@ -200,9 +200,9 @@ const catalogoInicialCemaz = [
     ])
 ];
 
-function guardarProductos(){
+function guardarProductos(productosEliminados = []){
     localStorage.setItem("productos", JSON.stringify(productos));
-    persistirProductosFirebase();
+    return persistirProductosFirebase(productosEliminados);
 }
 
 function normalizarTextoCatalogo(valor){

@@ -1,7 +1,12 @@
 let filtrosSolicitudesActuales = {};
+let seccionSolicitudesAdmin = "pendientes";
 
-function mostrarSolicitudesAdmin(filtros = filtrosSolicitudesActuales){
+function mostrarSolicitudesAdmin(
+    filtros = filtrosSolicitudesActuales,
+    seccion = seccionSolicitudesAdmin
+){
     filtrosSolicitudesActuales = filtros;
+    seccionSolicitudesAdmin = seccion;
 
     const usuarioSeleccionado = filtros.usuario || "";
     const categoriaSeleccionada = filtros.categoria || "";
@@ -40,6 +45,11 @@ function mostrarSolicitudesAdmin(filtros = filtrosSolicitudesActuales){
 
     const solicitudesOrdenadas = solicitudes
         .map((solicitud, indiceOriginal) => ({ solicitud, indiceOriginal }))
+        .filter(({ solicitud }) =>
+            seccion === "completas"
+                ? solicitudEstaCompletada(solicitud)
+                : !solicitudEstaCompletada(solicitud)
+        )
         .sort((a, b) => obtenerFechaSolicitud(b.solicitud) - obtenerFechaSolicitud(a.solicitud))
         .filter(({ solicitud }) => {
             const fecha = obtenerFechaSolicitud(solicitud);
@@ -60,6 +70,16 @@ function mostrarSolicitudesAdmin(filtros = filtrosSolicitudesActuales){
 
     let html = `
         <h2>📋 Solicitudes</h2>
+        <div class="request-tabs" role="tablist" aria-label="Sección de solicitudes">
+            <button class="${seccion === "pendientes" ? "active" : ""}"
+                onclick="cambiarSeccionSolicitudes('pendientes')">
+                Pendientes (${solicitudes.filter(s => !solicitudEstaCompletada(s)).length})
+            </button>
+            <button class="${seccion === "completas" ? "active" : ""}"
+                onclick="cambiarSeccionSolicitudes('completas')">
+                Completas (${solicitudes.filter(s => solicitudEstaCompletada(s)).length})
+            </button>
+        </div>
         ${filtrosHtml}
         <p class="muted">${solicitudesOrdenadas.length} solicitudes</p>
         <hr>
@@ -74,14 +94,20 @@ function mostrarSolicitudesAdmin(filtros = filtrosSolicitudesActuales){
                 <p>${escaparHTML(solicitud.categoria || "Sin categoría")}</p>
                 <p>${fecha ? new Date(fecha).toLocaleString("es") : escaparHTML(solicitud.fecha || "Fecha desconocida")}</p>
                 <p>Estado general: <strong>${escaparHTML(solicitud.estado || "Pendiente")}</strong></p>
+                ${solicitud.observaciones
+                    ? `<p class="request-observation"><strong>Observaciones / producto faltante:</strong><br>${escaparHTML(solicitud.observaciones)}</p>`
+                    : ""}
         `;
 
         (solicitud.productos || []).forEach(producto => {
             const estado = producto.estado || "Pendiente";
+            const unidad = producto.unidad
+                ? ` (${escaparHTML(producto.unidad)})`
+                : "";
 
             html += `
                 <div class="request-product">
-                    <strong>${escaparHTML(producto.nombre)}</strong> x${Number(producto.cantidad) || 0}
+                    <strong>${escaparHTML(producto.nombre)}${unidad}</strong> x${Number(producto.cantidad) || 0}
                     <label>Estado
                         <select onchange="cambiarEstadoProducto(${indiceOriginal}, ${producto.id}, this.value)">
                             ${["Pendiente", "Comprado", "Comprado Más", "Comprado Menos", "No Comprado"]
@@ -96,15 +122,24 @@ function mostrarSolicitudesAdmin(filtros = filtrosSolicitudesActuales){
             `;
         });
 
-        html += `
-                <button onclick="compraCompleta(${indiceOriginal})">✅ Compra completa</button>
-            </article>
-        `;
+        if(seccion === "pendientes"){
+            html += `<button onclick="compraCompleta(${indiceOriginal})">✅ Completar solicitud</button>`;
+        }
+
+        html += `</article>`;
     });
 
     document.getElementById("listaProductos").innerHTML = `
         <div id="panelSolicitudes">${html}</div>
     `;
+}
+
+function solicitudEstaCompletada(solicitud){
+    return solicitud.completada === true || solicitud.estado === "Comprado";
+}
+
+function cambiarSeccionSolicitudes(seccion){
+    mostrarSolicitudesAdmin(filtrosSolicitudesActuales, seccion);
 }
 
 function obtenerFechaSolicitud(solicitud){
@@ -175,22 +210,28 @@ function guardarObservacionProducto(solicitudIndex, productoId, observacion){
     guardarSolicitudes(solicitudes[solicitudIndex]);
 }
 
-function compraCompleta(index){
+async function compraCompleta(index){
+    const solicitud = solicitudes[index];
 
-    solicitudes[index].estado =
-    "Comprado";
+    if(!solicitud){
+        return;
+    }
 
-    solicitudes[index].productos.forEach(
-        producto => {
+    const estadoAnterior = solicitud.estado;
+    const completadaAnterior = solicitud.completada;
+    solicitud.completada = true;
+    solicitud.estado = "Completada";
 
-        producto.estado =
-        "Comprado";
+    const guardado = await guardarSolicitudes(solicitud);
 
-    });
+    if(!guardado){
+        solicitud.completada = completadaAnterior;
+        solicitud.estado = estadoAnterior;
+        mostrarSolicitudesAdmin(filtrosSolicitudesActuales, "pendientes");
+        return;
+    }
 
-    guardarSolicitudes(solicitudes[index]);
-
-    mostrarSolicitudesAdmin();
+    mostrarSolicitudesAdmin(filtrosSolicitudesActuales, "pendientes");
 
 }
 
@@ -216,6 +257,146 @@ function cambiarEstadoProducto(
 
     guardarSolicitudes(solicitudes[solicitudIndex]);
 
+}
+
+function obtenerRangoSemanaActual(){
+    const inicio = new Date();
+    inicio.setHours(0, 0, 0, 0);
+    const diaSemana = (inicio.getDay() + 6) % 7;
+    inicio.setDate(inicio.getDate() - diaSemana);
+
+    const fin = new Date(inicio);
+    fin.setDate(fin.getDate() + 7);
+
+    return {inicio, fin};
+}
+
+function mostrarResumenSemanal(){
+    const {inicio, fin} = obtenerRangoSemanaActual();
+    const resumen = {
+        "Comprados":new Map(),
+        "No Comprados":new Map(),
+        "Pendientes":new Map()
+    };
+
+    solicitudes.forEach(solicitud => {
+        const fechaSolicitud = obtenerFechaSolicitud(solicitud);
+
+        if(fechaSolicitud < inicio.getTime() || fechaSolicitud >= fin.getTime()){
+            return;
+        }
+
+        (solicitud.productos || []).forEach(producto => {
+            const estadoOriginal = producto.estado ||
+                "Pendiente";
+            const grupo = estadoOriginal === "No Comprado"
+                ? "No Comprados"
+                : estadoOriginal === "Pendiente"
+                    ? "Pendientes"
+                    : "Comprados";
+            const unidad = producto.unidad || "";
+            const clave = `${producto.nombre}\u0000${unidad}`;
+            const existente = resumen[grupo].get(clave);
+
+            if(existente){
+                existente.cantidad += Number(producto.cantidad) || 0;
+            }else{
+                resumen[grupo].set(clave, {
+                    nombre:producto.nombre || "Producto sin nombre",
+                    unidad,
+                    cantidad:Number(producto.cantidad) || 0
+                });
+            }
+        });
+    });
+
+    const fechaFinVisible = new Date(fin);
+    fechaFinVisible.setDate(fechaFinVisible.getDate() - 1);
+    const fechaRango = `${inicio.toLocaleDateString("es")} – ${fechaFinVisible.toLocaleDateString("es")}`;
+    const gruposHtml = Object.entries(resumen).map(([estado, productosPorEstado]) => {
+        const productosOrdenados = [...productosPorEstado.values()]
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+        const filas = productosOrdenados.length
+            ? productosOrdenados.map(producto => `
+                <li>
+                    <span>${escaparHTML(producto.nombre)}${producto.unidad ? ` (${escaparHTML(producto.unidad)})` : ""}</span>
+                    <strong>${producto.cantidad}</strong>
+                </li>
+            `).join("")
+            : `<li class="muted">Sin productos esta semana.</li>`;
+
+        return `
+            <article class="producto-card weekly-status">
+                <h3>${estado}</h3>
+                <ul>${filas}</ul>
+            </article>
+        `;
+    }).join("");
+
+    document.getElementById("listaProductos").innerHTML = `
+        <h2>📅 Resumen semanal</h2>
+        <p class="muted">Semana del ${escaparHTML(fechaRango)} · Cantidades agrupadas por producto y unidad.</p>
+        <div class="cards weekly-summary">${gruposHtml}</div>
+    `;
+}
+
+function mostrarGraficaProductosMasPedidos(){
+    if(usuarioActual?.rol !== "admin"){
+        return;
+    }
+
+    const cantidadesPorProducto = new Map();
+
+    solicitudes.forEach(solicitud => {
+        (solicitud.productos || []).forEach(producto => {
+            const nombre = producto.nombre || "Producto sin nombre";
+            const unidad = producto.unidad || "";
+            const clave = `${nombre}\u0000${unidad}`;
+            const cantidad = Number(producto.cantidad);
+
+            if(!Number.isFinite(cantidad) || cantidad <= 0){
+                return;
+            }
+
+            const existente = cantidadesPorProducto.get(clave);
+            if(existente){
+                existente.cantidad += cantidad;
+            }else{
+                cantidadesPorProducto.set(clave, {nombre, unidad, cantidad});
+            }
+        });
+    });
+
+    const masPedidos = [...cantidadesPorProducto.values()]
+        .sort((a, b) =>
+            b.cantidad - a.cantidad ||
+            a.nombre.localeCompare(b.nombre, "es")
+        )
+        .slice(0, 10);
+    const maximo = masPedidos[0]?.cantidad || 0;
+    const barras = masPedidos.length
+        ? masPedidos.map(producto => {
+            const porcentaje = Math.max(2, (producto.cantidad / maximo) * 100);
+            const etiqueta = `${producto.nombre}${producto.unidad ? ` (${producto.unidad})` : ""}`;
+
+            return `
+                <li class="popular-chart-row">
+                    <span class="popular-chart-label">${escaparHTML(etiqueta)}</span>
+                    <div class="popular-chart-track" role="img"
+                        aria-label="${escaparHTML(etiqueta)}: ${producto.cantidad}">
+                        <span class="popular-chart-bar" style="width:${porcentaje}%"></span>
+                    </div>
+                    <strong>${producto.cantidad}</strong>
+                </li>
+            `;
+        }).join("")
+        : `<li class="empty-state">Todavía no hay productos solicitados.</li>`;
+
+    document.getElementById("listaProductos").innerHTML = `
+        <h2>📈 Productos más pedidos</h2>
+        <p class="muted">Top 10 por cantidad solicitada en todo el historial, sin importar el estado.</p>
+        <ol class="popular-chart">${barras}</ol>
+    `;
 }
 
 function mostrarPanelProductos(){
@@ -407,7 +588,7 @@ document.getElementById(
 
 }
 
-function crearCategoria(){
+async function crearCategoria(){
 
 const nombre =
 document.getElementById(
@@ -416,15 +597,25 @@ document.getElementById(
 
 if(!nombre)return;
 
+if(categorias.includes(nombre)){
+    alert("Esa categoría ya existe.");
+    return;
+}
+
 categorias.push(nombre);
 
-guardarCategorias();
+if(!await guardarCategorias()){
+    categorias.pop();
+    localStorage.setItem("categorias", JSON.stringify(categorias));
+    mostrarConfiguracion();
+    return;
+}
 
 mostrarConfiguracion();
 
 }
 
-function crearUnidad(){
+async function crearUnidad(){
 
 const nombre =
 document.getElementById(
@@ -433,9 +624,19 @@ document.getElementById(
 
 if(!nombre)return;
 
+if(unidades.some(unidad => unidad.toLocaleLowerCase() === nombre.toLocaleLowerCase())){
+    alert("Esa unidad ya existe.");
+    return;
+}
+
 unidades.push(nombre);
 
-guardarUnidades();
+if(!await guardarUnidades()){
+    unidades.pop();
+    localStorage.setItem("unidades", JSON.stringify(unidades));
+    mostrarConfiguracion();
+    return;
+}
 
 mostrarConfiguracion();
 
@@ -755,7 +956,7 @@ function renderListadoProductos(lista){
     `).join("");
 }
 
-function crearProducto(){
+async function crearProducto(){
     const nombre = document.getElementById("nuevoNombre").value.trim();
     const precioTexto = document.getElementById("nuevoPrecio").value.trim();
     const precio = precioTexto === "" ? null : Number(precioTexto);
@@ -768,16 +969,22 @@ function crearProducto(){
         return;
     }
 
-    productos.push({
+    const nuevoProducto = {
         id:Date.now() + Math.random(),
         nombre,
         precio,
         categoria,
         subcategoria,
         unidad
-    });
+    };
+    productos.push(nuevoProducto);
 
-    guardarProductos();
+    if(!await guardarProductos()){
+        productos = productos.filter(producto => producto.id !== nuevoProducto.id);
+        localStorage.setItem("productos", JSON.stringify(productos));
+        mostrarPanelProductos();
+        return;
+    }
     mostrarPanelProductos();
 }
 
@@ -812,7 +1019,7 @@ function editarProducto(id){
     `;
 }
 
-function guardarEdicionProducto(event, id){
+async function guardarEdicionProducto(event, id){
     event.preventDefault();
     const producto = productos.find(item => item.id === id);
 
@@ -829,17 +1036,23 @@ function guardarEdicionProducto(event, id){
         return;
     }
 
+    const copiaAnterior = {...producto};
     producto.nombre = nombre;
     producto.precio = precio;
     producto.categoria = document.getElementById("editarProductoCategoria").value;
     producto.subcategoria = document.getElementById("editarProductoSubcategoria").value.trim();
     producto.unidad = document.getElementById("editarProductoUnidad").value;
 
-    guardarProductos();
+    if(!await guardarProductos()){
+        Object.assign(producto, copiaAnterior);
+        localStorage.setItem("productos", JSON.stringify(productos));
+        editarProducto(id);
+        return;
+    }
     mostrarPanelProductos();
 }
 
-function eliminarProducto(id){
+async function eliminarProducto(id){
     const indice = productos.findIndex(producto => producto.id === id);
 
     if(indice === -1){
@@ -850,8 +1063,12 @@ function eliminarProducto(id){
         return;
     }
 
-    productos.splice(indice, 1);
-    eliminarProductoFirebase(id);
-    guardarProductos();
+    const [productoEliminado] = productos.splice(indice, 1);
+    if(!await guardarProductos([id])){
+        productos.splice(indice, 0, productoEliminado);
+        localStorage.setItem("productos", JSON.stringify(productos));
+        mostrarPanelProductos();
+        return;
+    }
     mostrarPanelProductos();
 }

@@ -25,8 +25,10 @@ function reportarErrorFirebase(operacion, error, mostrarAlerta = true){
     console.error(`Error de Firebase (${operacion}):`, error);
 
     const mensaje = error?.code === "permission-denied"
-        ? `Firestore rechazó ${operacion}. Verifica que publicaste las reglas actuales en el proyecto correcto y que el perfil del usuario tenga activo: true, UID, nombre y categoría correctos.`
-        : "No se pudo completar la operación en Firebase. Revisa tu conexión e inténtalo de nuevo.";
+        ? operacion === "guardar solicitudes"
+            ? `Firestore rechazó ${operacion}. Verifica las reglas publicadas y que el perfil tenga UID, usuario, categoría y activo: true.`
+            : `Firestore rechazó ${operacion}. Verifica que las reglas actuales estén publicadas en el proyecto correcto y que el perfil tenga rol: "admin" y activo: true.`
+        : `No se pudo ${operacion} en Firebase. Revisa tu conexión e inténtalo de nuevo.`;
 
     if(mostrarAlerta){
         alert(mensaje);
@@ -174,11 +176,16 @@ function persistirUsuariosFirebase(){
     lote.commit().catch(error => reportarErrorFirebase("guardar usuarios", error));
 }
 
-function persistirProductosFirebase(){
+function persistirProductosFirebase(productosEliminados = []){
     guardarEnLocalStorage("productos", productos);
 
-    if(!firestoreDb || usuarioActual?.rol !== "admin"){
-        return;
+    if(!firestoreDb){
+        return Promise.resolve(true);
+    }
+
+    if(usuarioActual?.rol !== "admin"){
+        reportarErrorFirebase("guardar productos", {code:"permission-denied"});
+        return Promise.resolve(false);
     }
 
     const lote = firestoreDb.batch();
@@ -189,29 +196,46 @@ function persistirProductosFirebase(){
         );
     });
 
-    lote.commit().catch(error => reportarErrorFirebase("guardar productos", error));
+    productosEliminados.forEach(id => {
+        lote.delete(firestoreDb.collection("products").doc(String(id)));
+    });
+
+    return lote.commit().then(() => true).catch(error => {
+        reportarErrorFirebase("guardar productos", error);
+        return false;
+    });
 }
 
 function eliminarProductoFirebase(id){
     if(!firestoreDb || usuarioActual?.rol !== "admin"){
-        return;
+        return Promise.resolve(true);
     }
 
-    firestoreDb.collection("products").doc(String(id)).delete()
-        .catch(error => reportarErrorFirebase("eliminar producto", error));
+    return firestoreDb.collection("products").doc(String(id)).delete()
+        .then(() => true)
+        .catch(error => {
+            reportarErrorFirebase("eliminar producto", error);
+            return false;
+        });
 }
 
 function guardarConfiguracionFirebase(){
-    if(!firestoreDb || usuarioActual?.rol !== "admin"){
-        return;
+    if(!firestoreDb){
+        return Promise.resolve(true);
     }
 
-    firestoreDb.collection("settings").doc("catalog").set({
+    if(usuarioActual?.rol !== "admin"){
+        reportarErrorFirebase("guardar configuración", {code:"permission-denied"});
+        return Promise.resolve(false);
+    }
+
+    return firestoreDb.collection("settings").doc("catalog").set({
         categorias,
         unidades
-    }, {merge:true}).catch(error =>
-        reportarErrorFirebase("guardar configuración", error)
-    );
+    }, {merge:true}).then(() => true).catch(error => {
+        reportarErrorFirebase("guardar configuración", error);
+        return false;
+    });
 }
 
 function guardarSolicitudes(solicitudActualizada = null, notificarError = true){
